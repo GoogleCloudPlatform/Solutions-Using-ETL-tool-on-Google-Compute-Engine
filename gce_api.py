@@ -28,11 +28,24 @@ import oauth2client.file
 import oauth2client.tools
 
 
+class ResourceZoning(object):
+  """Constants to indicate which zone type the resource belongs to."""
+  NONE = 0
+  GLOBAL = 1
+  ZONE = 2
+
+
 class GceApi(object):
   """Google Client API wrapper for Google Compute Engine."""
 
   COMPUTE_ENGINE_SCOPE = 'https://www.googleapis.com/auth/compute'
-  COMPUTE_ENGINE_API_VERSION = 'v1beta14'
+  COMPUTE_ENGINE_API_VERSION = 'v1beta15'
+  COMPUTE_ENGINE_IMAGE_PROJECT = {
+      'debian-7-wheezy-v20130723': 'debian-cloud',
+      'debian-6-squeeze-v20130723': 'debian-cloud',
+      'centos-6-v20130731': 'centos-cloud',
+      'gcel-12-04-v20130325': 'google'
+  }
 
   def __init__(self, name, client_id, client_secret, project, zone):
     """Constructor.
@@ -76,30 +89,52 @@ class GceApi(object):
     return apiclient.discovery.build(
         'compute', self.COMPUTE_ENGINE_API_VERSION, http=authorized_http)
 
+  @classmethod
+  def _ResourceUrlFromPath(cls, path):
+    """Creates full resource URL from path."""
+    return 'https://www.googleapis.com/compute/%s/%s' % (
+        cls.COMPUTE_ENGINE_API_VERSION, path)
+
   def _ResourceUrl(self, resource_type, resource_name,
-                   global_resource=False, project_google=False):
+                   zoning=ResourceZoning.ZONE, project=None):
     """Creates URL to indicate Google Compute Engine resource.
 
     Args:
       resource_type: Resource type.
       resource_name: Resource name.
-      global_resource: Whether it's global resource.
-      project_google: Use 'google' project.
+      zoning: Which zone type the resource belongs to.
     Returns:
       URL in string to represent the resource.
     """
-    project_name = self._project
-    if project_google:
-      project_name = 'google'
+    if not project:
+      project = self._project
 
-    if global_resource:
-      return ('https://www.googleapis.com/compute/%s/projects/%s/global/%s/%s'
-              % (self.COMPUTE_ENGINE_API_VERSION, project_name,
-                 resource_type, resource_name))
+    if zoning == ResourceZoning.NONE:
+      resource_path = 'projects/%s/%s/%s' % (
+          project, resource_type, resource_name)
+    elif zoning == ResourceZoning.GLOBAL:
+      resource_path = 'projects/%s/global/%s/%s' % (
+          project, resource_type, resource_name)
     else:
-      return 'https://www.googleapis.com/compute/%s/projects/%s/%s/%s' % (
-          self.COMPUTE_ENGINE_API_VERSION, project_name,
-          resource_type, resource_name)
+      resource_path = 'projects/%s/zones/%s/%s/%s' % (
+          project, self._zone, resource_type, resource_name)
+
+    return self._ResourceUrlFromPath(resource_path)
+
+  def _ResourceProvidedImageUrl(self, image_name):
+    """Create URL to indicate Google Compute Engine image resource.
+
+    Args:
+      image_name: default image name provided by google e.g. debian-7.
+    Returns:
+      URL in string to represent the resource.
+    """
+    if image_name in self.COMPUTE_ENGINE_IMAGE_PROJECT:
+      return self._ResourceUrl('images', image_name, ResourceZoning.GLOBAL,
+                               self.COMPUTE_ENGINE_IMAGE_PROJECT[image_name])
+    else:
+      logging.error('Image, %s, is an invalid provided image resource',
+                    image_name)
 
   def _ParseOperation(self, operation, title):
     """Parses operation result and log warnings and errors if any.
@@ -172,9 +207,10 @@ class GceApi(object):
     params = {
         'kind': 'compute#instance',
         'name': instance_name,
-        'zone': self._ResourceUrl('zones', self._zone),
-        'machineType': self._ResourceUrl('machineTypes', machine_type, True),
-        'image': self._ResourceUrl('images', image, True, True),
+        'zone': self._ResourceUrl('zones', self._zone,
+                                  zoning=ResourceZoning.NONE),
+        'machineType': self._ResourceUrl('machineTypes', machine_type),
+        'image': self._ResourceProvidedImageUrl(image),
         'metadata': {
             'kind': 'compute#metadata',
             'items': [
@@ -194,7 +230,8 @@ class GceApi(object):
                         'name': 'External NAT',
                     }
                 ],
-                'network': self._ResourceUrl('networks', 'default', True)
+                'network': self._ResourceUrl('networks', 'default',
+                                             zoning=ResourceZoning.GLOBAL)
             },
         ],
         'serviceAccounts': [
@@ -263,7 +300,8 @@ class GceApi(object):
       # Cannot find named firewall, go ahead to create it
       params = {
           'sourceRanges': ['0.0.0.0/0'],
-          'network': self._ResourceUrl('networks', 'default', True),
+          'network': self._ResourceUrl('networks', 'default',
+                                       zoning=ResourceZoning.GLOBAL),
           'name': name,
           'allowed': allowed
       }

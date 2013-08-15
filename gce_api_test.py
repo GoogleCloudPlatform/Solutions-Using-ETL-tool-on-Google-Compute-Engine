@@ -154,7 +154,7 @@ class GceApiTest(unittest.TestCase):
 
     instance_info = self.gce_api.GetInstance('instance-name')
 
-    self.gce_api.GetApi.assert_called_once()
+    self.assertEqual(1, self.gce_api.GetApi.call_count)
     mock_api.instances.return_value.get.assert_called_once_with(
         project='project-name', zone='zone-name', instance='instance-name')
     (mock_api.instances.return_value.get.return_value.execute.
@@ -173,7 +173,7 @@ class GceApiTest(unittest.TestCase):
 
     instance_list = self.gce_api.ListInstances()
 
-    self.gce_api.GetApi.assert_called_once()
+    self.assertEqual(1, self.gce_api.GetApi.call_count)
     mock_api.instances.return_value.list.assert_called_once_with(
         project='project-name', zone='zone-name', filter=None)
     (mock_api.instances.return_value.list.return_value.execute.
@@ -190,7 +190,7 @@ class GceApiTest(unittest.TestCase):
 
     instance_list = self.gce_api.ListInstances('filter condition')
 
-    self.gce_api.GetApi.assert_called_once()
+    self.assertEqual(1, self.gce_api.GetApi.call_count)
     mock_api.instances.return_value.list.assert_called_once_with(
         project='project-name', zone='zone-name', filter='filter condition')
     (mock_api.instances.return_value.list.return_value.execute.
@@ -208,7 +208,7 @@ class GceApiTest(unittest.TestCase):
     self.assertTrue(self.gce_api.CreateInstance(
         'instance-name', 'machine-type', 'image-name'))
 
-    self.gce_api.GetApi.assert_called_once()
+    self.assertEqual(1, self.gce_api.GetApi.call_count)
     mock_api.instances.return_value.insert.assert_called_once_with(
         project='project-name', zone='zone-name', body=mock.ANY)
     (mock_api.instances.return_value.insert.return_value.execute.
@@ -231,7 +231,7 @@ class GceApiTest(unittest.TestCase):
     self.assertTrue(self.gce_api.CreateInstance(
         'instance-name', 'machine-type', 'image-name'))
 
-    self.gce_api.GetApi.assert_called_once()
+    self.assertEqual(1, self.gce_api.GetApi.call_count)
     mock_api.instances.return_value.insert.assert_called_once_with(
         project='project-name', zone='zone-name', body=mock.ANY)
     (mock_api.instances.return_value.insert.return_value.execute.
@@ -257,7 +257,7 @@ class GceApiTest(unittest.TestCase):
     self.assertFalse(self.gce_api.CreateInstance(
         'instance-name', 'machine-type', 'image-name'))
 
-    self.gce_api.GetApi.assert_called_once()
+    self.assertEqual(1, self.gce_api.GetApi.call_count)
     mock_api.instances.return_value.insert.assert_called_once_with(
         project='project-name', zone='zone-name', body=mock.ANY)
     (mock_api.instances.return_value.insert.return_value.execute.
@@ -273,7 +273,7 @@ class GceApiTest(unittest.TestCase):
 
     self.assertTrue(self.gce_api.DeleteInstance('instance-name'))
 
-    self.gce_api.GetApi.assert_called_once()
+    self.assertEqual(1, self.gce_api.GetApi.call_count)
     mock_api.instances.return_value.delete.assert_called_once_with(
         project='project-name', zone='zone-name', instance='instance-name')
     (mock_api.instances.return_value.delete.return_value.execute.
