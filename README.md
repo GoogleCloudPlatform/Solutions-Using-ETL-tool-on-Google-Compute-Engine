@@ -13,7 +13,7 @@ Unless required by applicable law or agreed to in writing, software distributed 
 This sample application is not an official Google product.
 
 ## Overview
-The purpose of "Using ETL tool on Google Compute Engine" is to automatically generate a virtual machine with the right applications installed such that users are enabled to rapidly design, create and execute ETL workflow.  They can then ingest the processed data to Big Query via Google Cloud Storage optionally.  This tool is tested on Google Compute Engine v1beta14.
+The purpose of "Using ETL tool on Google Compute Engine" is to automatically generate a virtual machine with the right applications installed such that users are enabled to rapidly design, create and execute ETL workflow.  They can then ingest the processed data to Big Query via Google Cloud Storage optionally.  This tool is tested on Google Compute Engine API v1.
 
 ## Download Instructions
 The "Using ETL tool on Google Compute Engine" utilizes the following script files:
@@ -30,16 +30,18 @@ After [downloading](https://github.com/GoogleCloudPlatform/solutions-using-etl-t
 This section intends to provide a step by step guide to operate the tool such that you can create an ETL-enabled virtual machine via Google Compute Engine automatically.
 
 ### Prerequisites
-1. Make sure you have access to a [Google API Console](https://code.google.com/apis/console) project that have access to both Google Compute Engine and Google Cloud Storage
-2. It is assumed that your local computer has both gsutil and gcutil correctly installed and configured.  If you don't, please follow [gsutil](https://developers.google.com/storage/docs/gsutil_install) and [gcutil](https://developers.google.com/compute/docs/gcutil/#install) download pages respectively to install and configure these tools.
-3. Download [KNIME desktop](http://www.knime.org/downloads/knime/linux64) and upload the \*.tar.gz file to a Google Cloud Storage bucket that is referenced by the above Google API Console project.  You will need to provide this Cloud Storage bucket name to "Using ETL tool on Google Compute Engine" later.  You may choose to upload this \*.tar.gz file as knime.tar.gz; otherwise, you will need to specify the name of this package later on when using the "Using ETL tool on Google Compute Engine".
+1. Make sure you have access to a [Google Developers Console](https://cloud.google.com/console) project that have access to both Google Compute Engine and Google Cloud Storage
+2. It is assumed that your local computer has both gsutil and gcutil correctly installed and configured.  If you don't, please install [Google Cloud SDK](https://developers.google.com/cloud/sdk/) and follow the installation and set up instructions.
+3. Download [KNIME desktop](http://www.knime.org/downloads/knime/linux64) and upload the \*.tar.gz file to a Google Cloud Storage bucket that is referenced by the above Google Cloud Console project.  You will need to provide this Cloud Storage bucket name to "Using ETL tool on Google Compute Engine" later.  You may choose to upload this \*.tar.gz file as knime.tar.gz; otherwise, you will need to specify the name of this package later on when using the "Using ETL tool on Google Compute Engine".
 
         gsutil cp knime_2.7.4.linux.gtk.x86_64.tar.gz gs://<My_BUCKET>/knime.tar.gz
 
 4. Install the [Google APIs Client Library for Python](https://developers.google.com/api-client-library/python/start/installation) on your local machine
 
+5. Install the Commandline flags module for python [python-gflags](https://code.google.com/p/python-gflags/downloads/list) on your local machine
+
 ### Create an ETL-enabled Virtual Machine
-1. In command prompt, execute the following command in the directory you extracted the "Using ETL tool on Google Compute Engine".  You need to obtain a client id and secret via the [Google API Console](https://code.google.com/apis/console).  An installed application client ID is required for the "Using ETL tool on Google Compute Engine".  For more information about obtaining the client ID and secret, see the  Authorizing Request in this [guide](https://developers.google.com/compute/docs/api/python_guide#gettingstarted).
+1. In command prompt, execute the following command in the directory you extracted the "Using ETL tool on Google Compute Engine".  You need to obtain a client id and secret via the [Google Developers Console](https://cloud.google.com/console).  An installed application client ID is required for the "Using ETL tool on Google Compute Engine".  For more information about obtaining the client ID and secret, see the  Authorizing Request in this [guide](https://developers.google.com/compute/docs/api/python_guide#gettingstarted).
 
         ./etl_demo.py --project=<Compute Engine enabled project> --bucket=<Cloud Storage bucket name> --client_id=xxxxxxxxxxx.apps.googleusercontent.com --client_secret=xxxxxxxxxxxxx
 
@@ -77,31 +79,36 @@ This section intends to provide a step by step guide to operate the tool such th
 5. Use the following commands to navigate your Compute Engine instance remote desktop session via the command window.  All "Using ETL tool on Google Compute Engine" installed software reside in /mnt/ed0 mounted drive.
 
         To start a chrome browser> /opt/google/chrome/google-chrome &
-        To start the KNIME ETL tool> sudo /mnt/ed0/knime/knime &
+        To start the KNIME ETL tool> /opt/knime/knime &
         To interact with Cloud Storage> gsutil help
+
+6. Install [Google Cloud SDK](https://developers.google.com/cloud/sdk/) on the Compute Engine instance and follow the installation and set up instructions.
+
         To interact with Big Query> bq help
 
 ### Run a KNIME sample workflow
 1. Once you are at the VNC session connecting to the Compute Engine instance, you can fire up KNIME using the following command
 
-        cd /mnt/ed0/knime
-        sudo knime &
+        /opt/knime/knime &
 
-2. Once the graphical application is opened, accept the default workspace which is "/mnt/ed0/workspace" and click OK
+2. Once the graphical application is opened, change the workspace to knime/workspace in your home directory and click OK
 3. Close the "Welcome to KNIME" splash window
-3. In the File menu, click "Import KNIME workflow…"
-4. In the pop up windows, under "Source" section, select "Select archive file", then click "Browse..."
-5. In the folder browser, select "Sample\_KNIME\_Project.zip", click OK. Click "Finish" to close the import window.
-6. Double click on "Sample\_KNIME\_Project" in the project explorer on the top left corner, the workflow should be opened.
-7. Navigate the workflow/graph until you find the "Interactive Table" node.  Right click on the node and select "View: Table View".  You will see a pop up table showing the final workflow result in table format.
-8. You can experiment with the workflow and re-execute it.  To learn more about how to use the KNIME tool, please see [the documentation](http://tech.knime.org/workbench).
+4. In the File menu, click "Import KNIME workflow…"
+5. In the pop up windows, under "Source" section, select "Select archive file", then click "Browse..."
+6. In the folder browser, navigate to knime/workspace in your home directory and select "Sample\_KNIME\_Project.zip", click OK. Click "Finish" to close the import window.
+7. In the KNIME Explorer window, open "Local (Local Workspace)"
+8. Double click on "Sample\_KNIME\_Project" in the project explorer on the top left corner, the workflow should be opened.
+9. Update the file location for all the CSV Reader and Writer nodes. On the workflow/graph, right click on the CSV Reader and Writer nodes and select "Configure...". Select Browse and select the corresponding CSV file in the knime/workspace/Sample_KNIME_Project directory in your home directory.
+10. Select any of the CSV Reader node and execute the selected node by click on the "Run" button.
+11. Navigate the workflow/graph until you find the "Interactive Table" node.  Execute the selected node. Right click on the node and select "View: Table View".  You will see a pop up table showing the final workflow result in table format.
+12. You can experiment with the workflow and re-execute it.  To learn more about how to use the KNIME tool, please see [the documentation](http://tech.knime.org/workbench).
 
 ## Clean up the VNC session and Compute Engine instance
 1. You can re-login to the Compute Engine instance vnc session anytime.  After you are done with the vnc session, you should execute the following command to kill the vnc session.
 
         myinstance> vnc4server -kill :1
 
-2. For any items you created in the Compute Engine instance, it is highly recommended that you upload them to Cloud Storage using gsutil to persist the data.  Note that the Compute Engine instance is created with ephemeral disk; hence, if you lose the Compute Engine instance, none of the data will be persisted.  Make sure you periodically upload any valuable data to Cloud Storage. An alternative option is to mount [persistent disk](https://developers.google.com/compute/docs/disks#persistentdisks) to the Compute Engine instance.
+2. For any items you created in the Compute Engine instance, it is highly recommended that you upload them to Cloud Storage using gsutil to persist the data. Make sure you periodically upload any valuable data to Cloud Storage. An alternative option is to mount [persistent disk](https://developers.google.com/compute/docs/disks#persistentdisks) to the Compute Engine instance.
 3. Finally, when you no longer need the Compute Engine instance, you can delete the instance by issuing the following command.  As long as you persist valuable data from the Compute Engine instance, you can always re-create another ETL-enabled Compute Engine instance via "Using ETL tool on Google Compute Engine".
 
         local_machine> gcutil deleteinstance myinstance

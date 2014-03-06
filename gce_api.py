@@ -19,6 +19,7 @@
 import logging
 import os
 import os.path
+import time
 
 import apiclient.discovery
 import httplib2
@@ -39,13 +40,13 @@ class GceApi(object):
   """Google Client API wrapper for Google Compute Engine."""
 
   COMPUTE_ENGINE_SCOPE = 'https://www.googleapis.com/auth/compute'
-  COMPUTE_ENGINE_API_VERSION = 'v1beta15'
+  COMPUTE_ENGINE_API_VERSION = 'v1'
   COMPUTE_ENGINE_IMAGE_PROJECT = {
-      'debian-7-wheezy-v20130723': 'debian-cloud',
-      'debian-6-squeeze-v20130723': 'debian-cloud',
-      'centos-6-v20130731': 'centos-cloud',
-      'gcel-12-04-v20130325': 'google'
+      'debian-7-wheezy-v20131120': 'debian-cloud',
   }
+
+  WAIT_INTERVAL = 3
+  MAX_WAIT_TIMES = 100
 
   def __init__(self, name, client_id, client_secret, project, zone):
     """Constructor.
@@ -88,6 +89,17 @@ class GceApi(object):
     authorized_http = credentials.authorize(httplib2.Http())
     return apiclient.discovery.build(
         'compute', self.COMPUTE_ENGINE_API_VERSION, http=authorized_http)
+
+  @staticmethod
+  def IsNotFoundError(http_error):
+    """Checks if HttpError reason was 'not found'.
+
+    Args:
+      http_error: HttpError
+    Returns:
+      True if the error reason was 'not found', otherwise False.
+    """
+    return http_error.resp['status'] == '404'
 
   @classmethod
   def _ResourceUrlFromPath(cls, path):
@@ -133,8 +145,8 @@ class GceApi(object):
       return self._ResourceUrl('images', image_name, ResourceZoning.GLOBAL,
                                self.COMPUTE_ENGINE_IMAGE_PROJECT[image_name])
     else:
-      logging.error('Image, %s, is an invalid provided image resource',
-                    image_name)
+      logging.error('Image %s, is not supported', image_name)
+      return None
 
   def _ParseOperation(self, operation, title):
     """Parses operation result and log warnings and errors if any.
@@ -187,7 +199,7 @@ class GceApi(object):
         project=self._project, zone=self._zone, filter=filter_string).execute()
     return result.get('items', [])
 
-  def CreateInstance(self, instance_name, machine_type, image,
+  def CreateInstance(self, instance_name, machine_type, disk,
                      startup_script='', service_accounts=None,
                      metadata=None):
     """Creates Google Compute Engine instance.
@@ -195,7 +207,8 @@ class GceApi(object):
     Args:
       instance_name: Name of the new instance.
       machine_type: Machine type.  e.g. 'n1-standard-2'
-      image: Machine image name.  e.g. 'gcel-12-04-v20130104'
+      disk: Name of the persistent disk to be used as a boot disk.  The disk
+          must preexist in the same zone as the instance.
       startup_script: Content of start up script to run on the new instance.
       service_accounts: List of scope URLs to give to the instance with
           the service account.
@@ -210,7 +223,16 @@ class GceApi(object):
         'zone': self._ResourceUrl('zones', self._zone,
                                   zoning=ResourceZoning.NONE),
         'machineType': self._ResourceUrl('machineTypes', machine_type),
-        'image': self._ResourceProvidedImageUrl(image),
+        'disks': [
+            {
+                'kind': 'compute#attachedDisk',
+                'boot': True,
+                'source': self._ResourceUrl('disks', disk),
+                'deviceName': disk,
+                'mode': 'READ_WRITE',
+                'type': 'PERSISTENT',
+            },
+        ],
         'metadata': {
             'kind': 'compute#metadata',
             'items': [
@@ -254,6 +276,53 @@ class GceApi(object):
     return self._ParseOperation(
         operation, 'Instance creation: %s' % instance_name)
 
+  def CreateInstanceWithNewBootDisk(
+      self, instance_name, machine_type, image,
+      startup_script='', service_accounts=None, metadata=None):
+    """Creates Google Compute Engine instance with newly created boot disk.
+
+    The boot disk is created with the same name as the instance, if the
+    disk with the name doesn't exist.  When the disk is ready, an instance is
+    created with the disk as its boot disk.
+
+    Args:
+      instance_name: Name of the new instance.
+      machine_type: Machine type.  e.g. 'n1-standard-2'
+      image: Machine image name. e.g. 'debian-7-wheezy-v20131120'
+      startup_script: Content of start up script to run on the new instance.
+      service_accounts: List of scope URLs to give to the instance with
+          the service account.
+      metadata: Additional key-value pairs in dictionary to add as
+          instance metadata.
+    Returns:
+      Boolean to indicate whether the instance creation was successful.
+    """
+    # Use the same disk name as instance name.
+    disk_name = instance_name
+
+    # If the boot disk doesn't already exist, create.
+    if not self.GetDisk(disk_name):
+      if not self.CreateDisk(disk_name, image=image):
+        return False
+
+    # Wait until the new persistent disk is READY.
+    for _ in xrange(self.MAX_WAIT_TIMES):
+      logging.info('Waiting for boot disk %s getting ready...', disk_name)
+      time.sleep(self.WAIT_INTERVAL)
+      disk = self.GetDisk(disk_name)
+      if disk:
+        disk_status = disk.get('status', None)
+        if disk_status == 'READY' or disk_status == 'RUNNING':
+          logging.info('Disk %s created successfully.', disk_name)
+          break
+    else:
+      logging.error('Persistent disk %s creation timed out.', disk_name)
+      return False
+
+    return self.CreateInstance(
+        instance_name, machine_type, disk_name,
+        startup_script, service_accounts, metadata)
+
   def DeleteInstance(self, instance_name):
     """Deletes Google Compute Engine instance.
 
@@ -268,6 +337,81 @@ class GceApi(object):
 
     return self._ParseOperation(
         operation, 'Instance deletion: %s' % instance_name)
+
+  def GetDisk(self, disk_name):
+    """Gets persistent disk information.
+
+    Args:
+      disk_name: Name of the persistent disk to get information about.
+    Returns:
+      Google Compute Engine disk resource.  None if not found.
+      https://developers.google.com/compute/docs/reference/latest/disks
+    Raises:
+      HttpError on API error, except for 'resource not found' error.
+    """
+    try:
+      return self.GetApi().disks().get(
+          project=self._project, zone=self._zone, disk=disk_name).execute()
+    except apiclient.errors.HttpError as e:
+      if self.IsNotFoundError(e):
+        return None
+      raise
+
+  def ListDisks(self, filter_string=None):
+    """Lists disks that match filter condition.
+
+    Format of filter string can be found in the following URL.
+    https://developers.google.com/compute/docs/reference/latest/disks/list
+
+    Args:
+      filter_string: Filtering condition.
+    Returns:
+      List of compute#disk.
+    """
+    result = self.GetApi().disks().list(
+        project=self._project, zone=self._zone, filter=filter_string).execute()
+    return result.get('items', [])
+
+  def CreateDisk(self, disk_name, image, size_gb=10):
+    """Creates persistent disk in the zone of this API.
+
+    Args:
+      disk_name: Name of the new persistent disk.
+      image: Machine image name for the new disk to base upon.
+          e.g. 'debian-7-wheezy-v20131120'
+      size_gb: Size of the new persistent disk in GB.
+    Returns:
+      Boolean to indicate whether the disk creation was successful.
+    """
+    params = {
+        'kind': 'compute#disk',
+        'sizeGb': '%d' % size_gb,
+        'name': disk_name,
+    }
+    source_image = self. _ResourceProvidedImageUrl(image)
+    if not source_image:
+      logging.error('CreateDisk must specify a valid image: %s', image)
+      return False
+
+    operation = self.GetApi().disks().insert(
+        project=self._project, zone=self._zone, body=params,
+        sourceImage=source_image).execute()
+    return self._ParseOperation(
+        operation, 'Disk creation %s' % disk_name)
+
+  def DeleteDisk(self, disk_name):
+    """Deletes persistent disk.
+
+    Args:
+      disk_name: Name of the persistent disk to delete.
+    Returns:
+      Boolean to indicate whether the disk deletion was successful.
+    """
+    operation = self.GetApi().disks().delete(
+        project=self._project, zone=self._zone, disk=disk_name).execute()
+
+    return self._ParseOperation(
+        operation, 'Disk deletion: %s' % disk_name)
 
   def CreateFirewall(self, name, allowed):
     """Firewall is created for the default network.

@@ -73,11 +73,11 @@ flags.DEFINE_string(
     'Engine instance',
     short_name='k')
 flags.DEFINE_string(
-    'machine_image', 'gcel-12-04-v20130325',
+    'machine_image', 'debian-7-wheezy-v20131120',
     'Machine image to use for instantiating a Compute Engine virtual machine',
     short_name='m')
 flags.DEFINE_string(
-    'machine_type', 'n1-standard-4-d',
+    'machine_type', 'n1-standard-4',
     'Machine type to use for instantiating a Compute Engine virtual machine',
     short_name='t')
 flags.DEFINE_string(
@@ -142,12 +142,13 @@ class ComputeManager(object):
         'home-user': getpass.getuser()
         }
 
-    return self.GetApi().CreateInstance(FLAGS.instance_name,
-                                        FLAGS.machine_type,
-                                        FLAGS.machine_image,
-                                        open(FLAGS.startup_script).read(),
-                                        service_accounts,
-                                        metadata)
+    return self.GetApi().CreateInstanceWithNewBootDisk(
+        FLAGS.instance_name,
+        FLAGS.machine_type,
+        FLAGS.machine_image,
+        open(FLAGS.startup_script).read(),
+        service_accounts,
+        metadata)
 
 
 def main(argv):
